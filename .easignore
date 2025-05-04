@@ -1,0 +1,32 @@
+# Node dependencies
+node_modules/
+
+# Logs
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+expo-error.log
+
+# System files
+.DS_Store
+
+# IDE settings
+.idea/
+.vscode/
+
+# Expo local folders
+.expo/
+.expo-shared/
+
+# Build artifacts
+*.apk
+*.aab
+*.ipa
+
+# Environment files
+.env
+.env.*
+
+# Build outputs
+build/
+dist/

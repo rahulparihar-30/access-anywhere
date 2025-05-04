@@ -42,14 +42,14 @@
     "experiments": {
       "typedRoutes": true
     },
+    "owner": "rahulaauji30",
     "extra": {
       "router": {
         "origin": false
       },
       "eas": {
-        "projectId": "8187c305-295c-4891-9d70-7cf73936fbcd"
+        "projectId": "dbbba01c-47da-4d59-b7e8-20654ab1784d"
       }
-    },
-    "owner": "rahulthedev2"
+    }
   }
 }

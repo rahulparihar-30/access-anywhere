@@ -1,4 +1,4 @@
-import React, { useState ,useEffect} from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,46 +8,76 @@ import {
   TextInput,
   StyleSheet,
   Alert,
-  Platform
+  Platform,
 } from "react-native";
 import { Menu, Button, Dialog, Portal, Provider } from "react-native-paper";
 import { Ionicons } from "@expo/vector-icons";
 import * as Linking from "expo-linking";
-import { useNavigation } from "expo-router";
+import { useNavigation, useLocalSearchParams } from "expo-router";
 import * as FileSystem from "expo-file-system";
 import * as MediaLibrary from "expo-media-library";
+import * as Sharing from 'expo-sharing';
+import * as Permissions from 'expo-permissions';
 
-
-export default function Files() {
-  const [files, setFiles] = useState([
-    { id: "1", name: "Movies", type: "folder", contents: [] },
-    { id: "2", name: "Photos", type: "folder", contents: [{ id: "1", name: "flower.jpg", type: "image", uri: "https://drive.google.com/uc?export=download&id=1Ebg8dDSYrvuThVlzW4BTXLfQWrtJJU0c" },
-        { id: "2", name: "cat.jpg", type: "image", uri: "https://drive.google.com/uc?export=download&id=1C6vhrWC-7zh1LsejMAh4mjg9NKe9JkTk" },
-        { id: "3", name: "music.jpg", type: "image", uri: "https://drive.google.com/uc?export=download&id=1GhTszPmUt4nsyRxmgjkD_2qR4-QJ9vE_" },
-        { id: "4", name: "butterfly.jpg", type: "image", uri: "https://drive.google.com/uc?export=download&id=1Ebg8dDSYrvuThVlzW4BTXLfQWrtJJU0c" },] },
-    { id: "3", name: "Music", type: "folder", contents: [] },
-    { id: "4", name: "My Pic.jpg", type: "image", uri: "https://drive.google.com/uc?export=download&id=1GhTszPmUt4nsyRxmgjkD_2qR4-QJ9vE_" },
-    { id: "5", name: "Lajawati Jhar.mp4", type: "video", uri: "https://drive.google.com/uc?export=download&id=1TByHI1gLywy77L5c4Iqpt6EwOjT2JNhq" },
-    { id: "6", name: "template.docx", type: "file", uri: "https://via.placeholder.com/50" },
-    { id: "7", name: "Sampleaudio.mp3", type: "mp3", uri: "https://drive.google.com/uc?export=download&id=1ApzhKSi92fHY172yY8ubYKQEcrOhH2te" },
-  ]);
+export default function Files({}) {
+  const [files, setFiles] = useState([]);
   const [navigationStack, setNavigationStack] = useState([]);
   const [selectedFile, setSelectedFile] = useState(null);
   const [dialogVisible, setDialogVisible] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [menuVisible, setMenuVisible] = useState(false);
   const [renameDialogVisible, setRenameDialogVisible] = useState(false);
-const [newFileName, setNewFileName] = useState("");
-const [fileToRename, setFileToRename] = useState(null);
+  const [newFileName, setNewFileName] = useState("");
+  const [fileToRename, setFileToRename] = useState(null);
+  const [progress, setProgress] = useState(0);
+  const [showProgress, setShowProgress] = useState(false);
+  const { serverUrl } = useLocalSearchParams();
 
   const navigation = useNavigation();
+
+  const fetchFiles = async () => {
+    try {
+      const response = await fetch(`${serverUrl}/home`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch files");
+      }
+  
+      const data = await response.json();
+  
+      if (!Array.isArray(data)) {
+        console.error("Expected an array but got:", data);
+        throw new Error("Invalid data received from server.");
+      }
+  
+      const visibleFiles = data
+        .filter((file) => !file.name.startsWith("."))
+        .map((file) => ({
+          id: file.name,
+          name: file.name,
+          type: file.is_dir ? "folder" : "file",
+          is_dir: file.is_dir,
+          is_file: file.is_file,
+        }));
+  
+      setFiles(visibleFiles);
+  
+    } catch (error) {
+      console.error("Error fetching files:", error);
+      Alert.alert("Error", "Failed to fetch files from server.");
+    }
+  };
 
   const addFolder = () => {
     if (newFolderName.trim() === "") {
       Alert.alert("Error", "Folder name cannot be empty");
       return;
     }
-    const newFolder = { id: Date.now().toString(), name: newFolderName, type: "folder", contents: [] };
+    const newFolder = {
+      id: Date.now().toString(),
+      name: newFolderName,
+      type: "folder",
+      contents: [],
+    };
     if (navigationStack.length > 0) {
       navigationStack[navigationStack.length - 1].contents.push(newFolder);
       setNavigationStack([...navigationStack]);
@@ -63,7 +93,7 @@ const [fileToRename, setFileToRename] = useState(null);
       Alert.alert("Error", "File name cannot be empty.");
       return;
     }
-  
+
     if (navigationStack.length > 0) {
       const currentFolder = navigationStack[navigationStack.length - 1];
       currentFolder.contents = currentFolder.contents.map((f) =>
@@ -72,140 +102,242 @@ const [fileToRename, setFileToRename] = useState(null);
       setNavigationStack([...navigationStack]);
     } else {
       setFiles(
-        files.map((f) => (f.id === fileToRename.id ? { ...f, name: newFileName } : f))
+        files.map((f) =>
+          f.id === fileToRename.id ? { ...f, name: newFileName } : f
+        )
       );
     }
-  
+
     setRenameDialogVisible(false);
     setFileToRename(null);
     Alert.alert("Renamed", "File has been renamed successfully.");
   };
-  
+
   const downloadFile = async (file) => {
     try {
-      const { status } = await MediaLibrary.requestPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert("Permission Denied", "Please allow storage access to download files.");
+      // Request appropriate permissions based on Android version
+      let permissionResponse;
+      if (Platform.OS === 'android' && Platform.Version >= 33) {
+        permissionResponse = await MediaLibrary.requestPermissionsAsync();
+      } else {
+        permissionResponse = await Permissions.askAsync(
+          Permissions.MEDIA_LIBRARY,
+          Permissions.WRITE_EXTERNAL_STORAGE
+        );
+      }
+  
+      if (permissionResponse.status !== 'granted') {
+        Alert.alert(
+          'Permission Denied',
+          'Please allow storage access to download files.'
+        );
         return;
       }
   
-      const downloadUri = file.uri; // URL of the file to download
-      const fileName = file.name; // Keep original filename
-      const fileUri = FileSystem.documentDirectory + fileName; // Save location
+      // Construct the proper download URL
+      const currentPath = navigationStack.length > 0 
+        ? navigationStack.map(folder => folder.name).join('/') 
+        : '';
+      
+      const downloadUri = `${serverUrl}/download?path=${encodeURIComponent(
+        currentPath ? `${currentPath}/${file.name}` : file.name
+      )}`;
   
-      // Start downloading
-      const { uri } = await FileSystem.downloadAsync(downloadUri, fileUri);
+      const fileName = file.name;
+      const fileUri = FileSystem.documentDirectory + fileName;
+  
+      // Show progress UI
+      setShowProgress(true);
+  
+      // Start downloading with progress callback
+      const downloadResult = await FileSystem.downloadAsync(
+        downloadUri, 
+        fileUri,
+        { 
+          progressCallback: (downloadProgress) => {
+            const progress = 
+              downloadProgress.totalBytesWritten / 
+              downloadProgress.totalBytesExpectedToWrite;
+            setProgress(progress * 100);
+          }
+        }
+      );
+      
+      // Hide progress when done
+      setShowProgress(false);
   
       // Save to Media Library (only on Android)
       if (Platform.OS === "android") {
-        const asset = await MediaLibrary.createAssetAsync(uri);
-        await MediaLibrary.createAlbumAsync("Download", asset, false);
+        try {
+          const asset = await MediaLibrary.createAssetAsync(downloadResult.uri);
+          await MediaLibrary.createAlbumAsync("Downloads", asset, false);
+        } catch (error) {
+          console.warn("Couldn't save to album, saving to downloads directory only");
+          // Fallback - the file is already saved to the app's directory
+        }
       }
   
       Alert.alert("Download Complete", `File saved as ${fileName}`);
     } catch (error) {
+      setShowProgress(false);
       Alert.alert("Download Failed", "An error occurred while downloading the file.");
       console.error("Download Error:", error);
     }
   };
-  
-  const deleteFile = (file) => {
-    if (navigationStack.length > 0) {
-      const currentFolder = navigationStack[navigationStack.length - 1];
-      currentFolder.contents = currentFolder.contents.filter((f) => f.id !== file.id);
-      setNavigationStack([...navigationStack]);
-    } else {
-      setFiles(files.filter((f) => f.id !== file.id));
-    }
-  
-    Alert.alert("Deleted", `${file.name} has been deleted.`);
-  };
-  const showRenameDialog = (file) => {
-    setFileToRename(file);
-    setNewFileName(file.name);
-    setRenameDialogVisible(true);
-  };
-  
-  const openFile = (item) => {
-    if (item.type === "folder") {
-      setNavigationStack([...navigationStack, item]);
-    } else {
-      Linking.openURL(item.uri).catch((err) => console.error("Error opening file:", err));
-    }
-  };
 
+  const openFile = async (item) => {
+    if (item.type === "folder") {
+      try {
+        const currentPath = navigationStack.length > 0 
+          ? navigationStack.map(folder => folder.name).join('/') 
+          : '';
+        
+        const path = currentPath ? `${currentPath}/${item.name}` : item.name;
+        const response = await fetch(`${serverUrl}/list?path=${encodeURIComponent(path)}`);
+        
+        if (!response.ok) throw new Error("Failed to fetch folder contents");
+        const data = await response.json();
+        item.contents = data;
+        setNavigationStack([...navigationStack, item]);
+      } catch (error) {
+        console.error("Failed to open folder:", error);
+        Alert.alert("Error", "Could not open the folder.");
+      }
+    } else {
+      try {
+        const currentPath = navigationStack.length > 0 
+          ? navigationStack.map(folder => folder.name).join('/') 
+          : '';
+        
+        const fileUrl = `${serverUrl}/download?path=${encodeURIComponent(
+          currentPath ? `${currentPath}/${item.name}` : item.name
+        )}`;
+        
+        await Linking.openURL(fileUrl);
+      } catch (err) {
+        console.error("Error opening file:", err);
+        Alert.alert("Error", "Could not open the file.");
+      }
+    }
+  };
+  
+  const getCurrentPath = () => {
+    return navigationStack.map(folder => folder.name).join("/");
+  };
+  
   const goBack = () => {
     setNavigationStack(navigationStack.slice(0, -1));
   };
 
-  const showMenu = (file) => {
+  const handleMenuOpen = (file) => {
     setSelectedFile(file);
     setMenuVisible(true);
   };
-  const hideMenu = () => setMenuVisible(false);
-  
+
+  const hideMenu = () => {
+    setSelectedFile(null);
+    setMenuVisible(false);
+  };
+
   useEffect(() => {
     navigation.setOptions({
-      title: navigationStack.length > 0 ? navigationStack[navigationStack.length - 1].name : "Files",
+      title:
+        navigationStack.length > 0
+          ? navigationStack[navigationStack.length - 1].name
+          : "Files",
       headerLeft: () =>
         navigationStack.length > 0 ? (
           <TouchableOpacity onPress={goBack} style={{ marginRight: 20 }}>
             <Ionicons name="arrow-back" size={24} color="black" />
           </TouchableOpacity>
-        ) : null, // Hide back button if at the root
+        ) : null,
     });
+    fetchFiles();
   }, [navigation, navigationStack]);
+
+  useEffect(() => {
+    const checkPermissions = async () => {
+      if (Platform.OS === 'android') {
+        let permissionResponse;
+        if (Platform.Version >= 33) {
+          permissionResponse = await MediaLibrary.requestPermissionsAsync();
+        } else {
+          permissionResponse = await Permissions.askAsync(
+            Permissions.MEDIA_LIBRARY,
+            Permissions.WRITE_EXTERNAL_STORAGE
+          );
+        }
   
+        if (permissionResponse.status !== 'granted') {
+          Alert.alert(
+            'Permission Required',
+            'Please grant storage permissions to download files'
+          );
+        }
+      }
+    };
+    checkPermissions();
+  }, []);
+  
+  const currentFiles =
+    navigationStack.length > 0
+      ? navigationStack[navigationStack.length - 1].contents.filter(
+          (file) => !file.name.startsWith(".")
+        )
+      : files;
+
   return (
     <Provider>
       <View style={styles.container}>
         <FlatList
-          data={navigationStack.length > 0 ? navigationStack[navigationStack.length - 1].contents : files}
+          keyExtractor={(item, index) =>
+            item.id ? item.id.toString() : `${item.name}-${index}`
+          }
+          data={currentFiles}
           renderItem={({ item }) => (
-            <TouchableOpacity style={styles.itemContainer} onPress={() => openFile(item)}>
+            <TouchableOpacity
+              style={styles.itemContainer}
+              onPress={() => openFile(item)}
+            >
               <View style={styles.itemContent}>
                 {item.type === "folder" ? (
                   <Ionicons name="folder" size={24} color="#D28C21" />
                 ) : (
-                  <Image source={{ uri: item.uri }} style={styles.thumbnail} />
+                  <Ionicons name="document" size={24} color="#555" />
                 )}
                 <Text style={styles.itemText}>{item.name}</Text>
               </View>
-              <Menu
-                visible={menuVisible && selectedFile?.id === item.id}
-                onDismiss={hideMenu}
-                anchor={<Button onPress={() => showMenu(item)}>⋮</Button>}
-              >
-                <Menu.Item onPress={() => downloadFile(selectedFile)} title="Download" />
-                <Menu.Item onPress={() => showRenameDialog(selectedFile)} title="Rename" />
-                <Menu.Item onPress={() => deleteFile(selectedFile)} title="Delete" />
-              </Menu>
+              <Button onPress={() => handleMenuOpen(item)}>⋮</Button>
             </TouchableOpacity>
           )}
-          keyExtractor={(item) => item.id}
         />
 
-        <TouchableOpacity style={styles.addButton} onPress={() => setDialogVisible(true)}>
+        <Menu
+          visible={menuVisible}
+          onDismiss={hideMenu}
+          anchor={{ x: 0, y: 0 }}
+        >
+          <Menu.Item
+            onPress={() => downloadFile(selectedFile)}
+            title="Download"
+          />
+        </Menu>
+
+        {showProgress && (
+          <View style={styles.progressContainer}>
+            <View style={styles.progressBar}>
+              <View style={[styles.progressFill, { width: `${progress}%` }]} />
+            </View>
+            <Text style={styles.progressText}>{progress.toFixed(0)}%</Text>
+          </View>
+        )}
+
+        <TouchableOpacity
+          style={styles.addButton}
+          onPress={() => setDialogVisible(true)}
+        >
           <Ionicons name="add" size={24} color="#fff" />
         </TouchableOpacity>
-
-        <Portal>
-          <Dialog visible={dialogVisible} onDismiss={() => setDialogVisible(false)}>
-            <Dialog.Title>Enter Folder Name</Dialog.Title>
-            <Dialog.Content>
-              <TextInput
-                placeholder="Folder name"
-                value={newFolderName}
-                onChangeText={setNewFolderName}
-                style={styles.input}
-              />
-            </Dialog.Content>
-            <Dialog.Actions>
-              <Button onPress={() => setDialogVisible(false)}>Cancel</Button>
-              <Button onPress={addFolder}>Add</Button>
-            </Dialog.Actions>
-          </Dialog>
-        </Portal>
       </View>
     </Provider>
   );
@@ -215,10 +347,14 @@ const styles = StyleSheet.create({
   container: { flex: 1, padding: 10, backgroundColor: "#fff" },
   header: { flexDirection: "row", alignItems: "center", padding: 10 },
   headerText: { fontSize: 18, fontWeight: "bold", marginLeft: 10 },
-  itemContainer: { flexDirection: "row", alignItems: "center", padding: 10, justifyContent: "space-between" },
+  itemContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 10,
+    justifyContent: "space-between",
+  },
   itemContent: { flexDirection: "row", alignItems: "center" },
   itemText: { marginLeft: 10, fontSize: 16 },
-  thumbnail: { width: 40, height: 40, borderRadius: 5 },
   addButton: {
     position: "absolute",
     bottom: 20,
@@ -227,14 +363,39 @@ const styles = StyleSheet.create({
     padding: 15,
     borderRadius: 50,
   },
-  backButton: { flexDirection: "row", alignItems: "center", padding: 10 },
-  backText: { marginLeft: 5, fontSize: 16 },
   input: {
     width: "100%",
     padding: 10,
     borderWidth: 0,
     borderBottomWidth: 1,
-    borderColor:"#D28C21",
+    borderColor: "#D28C21",
     marginVertical: 10,
+  },
+  progressContainer: {
+    position: 'absolute',
+    bottom: 80,
+    left: 20,
+    right: 20,
+    backgroundColor: 'white',
+    padding: 15,
+    borderRadius: 8,
+    elevation: 4,
+    alignItems: 'center',
+  },
+  progressBar: {
+    height: 10,
+    width: '100%',
+    backgroundColor: '#e0e0e0',
+    borderRadius: 5,
+    marginBottom: 5,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#D28C21',
+  },
+  progressText: {
+    fontSize: 14,
+    color: '#555',
   },
 });
