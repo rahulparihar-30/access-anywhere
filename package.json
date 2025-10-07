@@ -31,7 +31,6 @@
     "expo-linking": "~7.0.5",
     "expo-media-library": "~17.0.6",
     "expo-notifications": "^0.29.14",
-    "expo-permissions": "^14.4.0",
     "expo-router": "~4.0.19",
     "expo-sharing": "^13.0.1",
     "expo-splash-screen": "~0.29.22",
