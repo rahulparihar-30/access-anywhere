@@ -187,50 +187,116 @@ export default function Files() {
   return (
     <Provider>
       <View style={styles.container}>
-        <FlatList
-          data={currentFiles}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.itemContainer}
-              onPress={() => handleItemPress(item)}
-              onLongPress={() => handleMenuOpen(item)}
-            >
-              <View style={styles.itemContent}>
-                <Ionicons 
-                  name={item.is_dir ? "folder" : "document"} 
-                  size={24} 
-                  color={item.is_dir ? "#D28C21" : "#555"} 
-                />
-                <Text style={styles.itemText}>{item.name}</Text>
-              </View>
-              <Button onPress={() => handleMenuOpen(item)}>⋮</Button>
-            </TouchableOpacity>
-          )}
-        />
-
-        <Menu
-          visible={menuVisible}
-          onDismiss={() => setMenuVisible(false)}
-          anchor={{ x: 0, y: 0 }}
-        >
-          <Menu.Item
-            onPress={() => {
-              setMenuVisible(false);
-              downloadFile(selectedFile);
-            }}
-            title="Download"
-          />
-        </Menu>
-
-        {showProgress && (
-          <View style={styles.progressContainer}>
-            <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: `${progress}%` }]} />
-            </View>
-            <Text style={styles.progressText}>{progress.toFixed(0)}%</Text>
+      <FlatList
+        data={currentFiles}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => {
+        // Determine icon based on file type/extension
+        let iconName = "document";
+        let iconColor = "#555";
+        if (item.is_dir) {
+          iconName = "folder";
+          iconColor = "#D28C21";
+        } else {
+          const ext = item.name.split('.').pop()?.toLowerCase();
+          switch (ext) {
+          case "jpg":
+          case "jpeg":
+          case "png":
+          case "gif":
+            iconName = "image";
+            iconColor = "#4A90E2";
+            break;
+          case "mp3":
+          case "wav":
+          case "aac":
+            iconName = "musical-notes";
+            iconColor = "#8E44AD";
+            break;
+          case "mp4":
+          case "mov":
+          case "avi":
+          case "mkv":
+            iconName = "videocam";
+            iconColor = "#E74C3C";
+            break;
+          case "pdf":
+            iconName = "document-text";
+            iconColor = "#D32F2F";
+            break;
+          case "zip":
+          case "rar":
+          case "7z":
+            iconName = "archive";
+            iconColor = "#F39C12";
+            break;
+          case "txt":
+          case "md":
+            iconName = "document-outline";
+            iconColor = "#27AE60";
+            break;
+          case "doc":
+          case "docx":
+            iconName = "document-text-outline";
+            iconColor = "#2980B9";
+            break;
+          case "xls":
+          case "xlsx":
+            iconName = "grid";
+            iconColor = "#16A085";
+            break;
+          case "ppt":
+          case "pptx":
+            iconName = "easel";
+            iconColor = "#E67E22";
+            break;
+          default:
+            iconName = "document";
+            iconColor = "#555";
+          }
+        }
+        return (
+          <TouchableOpacity
+          style={styles.itemContainer}
+          onPress={() => handleItemPress(item)}
+          onLongPress={() => handleMenuOpen(item)}
+          >
+          <View style={styles.itemContent}>
+            <Ionicons
+            name={iconName}
+            size={24}
+            color={iconColor}
+            />
+            <Text style={styles.itemText}>{item.name}</Text>
           </View>
-        )}
+          <Button onPress={() => handleMenuOpen(item)}>⋮</Button>
+          </TouchableOpacity>
+        );
+        }}
+      />
+
+      <Menu
+        visible={menuVisible}
+        onDismiss={() => setMenuVisible(false)}
+        anchor={{ x: 0, y: 0 }}
+      >
+        <Menu.Item
+        onPress={() => {
+          setMenuVisible(false);
+          downloadFile(selectedFile);
+        }}
+        title="Download"
+        />
+      </Menu>
+
+      {showProgress && (
+        <View style={styles.progressContainer}>
+        <View style={styles.progressBar}>
+          <View style={[styles.progressFill, { width: `${progress}%` }]} />
+        </View>
+        <Text style={styles.progressText}>{progress.toFixed(0)}%</Text>
+        </View>
+      )}
       </View>
     </Provider>
   );
